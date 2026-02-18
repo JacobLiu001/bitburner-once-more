@@ -7,17 +7,17 @@ export async function main(ns: NS) {
       "This script must be run on home. I can't be bothered to make it work since it's only for bootstrapping.",
     );
   }
-  ns.exec("/tasks/root_all.ts", "home");
+  ns.exec("/tasks/root_all.js", "home");
   await ns.sleep(1000); // save 0.1GB of RAM
-  ns.exec("/tasks/write_all_servers.ts", "home");
+  ns.exec("/tasks/write_all_servers.js", "home");
   await ns.sleep(1000);
   const servers = JSON.parse(ns.read("/tmp/all_rooted.txt"));
   ns.exec(
-    "/tasks/distribute_files.ts",
+    "/tasks/distribute_files.js",
     "home",
     1,
     JSON.stringify(servers),
-    JSON.stringify(["/batcher/dumb_hack.ts", "/batcher/dumb_weaken.ts"]),
+    JSON.stringify(["/batcher/dumb_hack.js", "/batcher/dumb_weaken.js"]),
     "home",
   );
   await ns.sleep(1000);
@@ -36,8 +36,8 @@ export async function main(ns: NS) {
         if (threads < 1) {
           continue;
         }
-        ns.scp("/batcher/dumb_weaken.ts", server, "home");
-        ns.exec("/batcher/dumb_weaken.ts", server, threads, target);
+        ns.scp("/batcher/dumb_weaken.js", server, "home");
+        ns.exec("/batcher/dumb_weaken.js", server, threads, target);
       }
       await ns.sleep(ns.getWeakenTime(target) + 150);
       continue;
@@ -51,7 +51,7 @@ export async function main(ns: NS) {
         if (threads < 1) {
           continue;
         }
-        ns.exec("/batcher/dumb_hack.ts", server, threads, target);
+        ns.exec("/batcher/dumb_hack.js", server, threads, target);
       }
       await ns.sleep(ns.getHackTime(target) + 150);
       continue;

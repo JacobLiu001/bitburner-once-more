@@ -1,8 +1,10 @@
+import { NS } from "@ns";
+
 export function getAllServers(ns: NS, root: string) {
   const visited: string[] = [];
   const stack: string[] = [root];
   while (stack.length > 0) {
-    const current = stack.pop();
+    const current = stack.pop()!;
     if (visited.includes(current)) {
       continue;
     }
@@ -15,7 +17,7 @@ export function getAllServers(ns: NS, root: string) {
 export function getAllServersAndDistribute(
   ns: NS,
   root: string,
-  scripts_to_copy: string[]
+  scripts_to_copy: string[],
 ) {
   const servers = getAllServers(ns, root);
   for (const server of servers) {

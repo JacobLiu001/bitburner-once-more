@@ -19,21 +19,10 @@ function find_xpath(xpath: string) {
   ).singleNodeValue;
 }
 
-/** Try to find an element, with retries. This is tricky - in some cases we are
- * just checking if the element exists, but expect that it might not
- * (expectFailure = true) - in this case we want some retries in case we were
- * just too fast to detect the element but we don't want to retry too much. We
- * also don't want to be too noisy if we fail to find the element. In other
- * cases, we always expect to find the element we're looking for, and if we
- * don't it's an error.
- *
+/** Try to find an element, with retries.
  * @param {NS} ns
  *
  * @param {string} xpath The xpath 1.0 expression to use to find the element.
- *
- * @param {boolean} expectFailure Changes the behaviour when an item cannot be
- * found. If false, failing to find the element is treated as an error. If true,
- * we simply return null indicating that no such element was found.
  *
  * @param {null|number} maxRetries (defaults to 5) The number of times to retry.
  *
@@ -43,34 +32,23 @@ function find_xpath(xpath: string) {
 export async function find_xpath_with_retry(
   ns: NS,
   xpath: string,
-  expectFailure: boolean,
   maxRetries: null | number,
   customErrorMessage: string | null = null,
 ) {
   maxRetries = maxRetries || 5; // If not specified or is 0, default to 5
   await ns.sleep(SLEEP_FIND);
-  try {
-    const logSafeXpath = xpath.substring(2, 20) + "...";
-    let retries = 0;
-    while (retries === 0 || (maxRetries !== null && retries < maxRetries)) {
-      const elem = find_xpath(xpath);
-      if (elem !== null) return elem;
-      retries++;
-      // Wait for the DOM to load; 200ms is one tick.
-      await ns.sleep(Math.min(1 << retries, 200));
-    }
-    if (!expectFailure) {
-      // Log a truncated version of the xpath so we don't accidentally find the
-      // logged version!
-      throw new Error(
-        customErrorMessage ??
-          `Failed to find element with xpath: ${logSafeXpath}`,
-      );
-    }
-  } catch (e) {
-    if (!expectFailure) throw e;
+  const logSafeXpath = xpath.substring(2, 20) + "...";
+  let retries = 0;
+  while (retries === 0 || (maxRetries !== null && retries < maxRetries)) {
+    const elem = find_xpath(xpath);
+    if (elem !== null) return elem;
+    retries++;
+    // Wait for the DOM to load; 200ms is one tick.
+    await ns.sleep(Math.min(1 << retries, 200));
   }
-  return null;
+  throw new Error(
+    customErrorMessage ?? `Failed to find element with xpath: ${logSafeXpath}`,
+  );
 }
 
 export async function click(ns: NS, button: Node) {

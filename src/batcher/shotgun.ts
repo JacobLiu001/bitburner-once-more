@@ -1,17 +1,14 @@
+import { NS, AutocompleteData, Server, ProcessInfo } from "@ns";
 import { getAllServers } from "./utils";
 import { prepServer } from "./prepper";
 import { RamNet } from "./RamNet";
+import { oneshot as pserv_upgrade_oneshot } from "/pservd";
 
 const SLEEP_SLACK_TIME = 2000; // fuck me.
 const MAX_BATCHES = 90000;
 const GROW_COMPENSATION = 1.01; // heath robinson growth compensation
 const SHARE_DURATION = 10000; // each cycle of ns.share() is 10 seconds
-const CONFLICT_SCRIPTS = [
-  "/batcher/shotgun.ts",
-  "batcher/shotgun.ts",
-  "/batcher/farm_xp.ts",
-  "batcher/farm_xp.ts",
-];
+const CONFLICT_SCRIPTS = ["/batcher/shotgun.js", "batcher/shotgun.js"];
 
 const argsSchema: [string, string | number | boolean | string[]][] = [
   ["no-share", false],
@@ -27,25 +24,25 @@ function getOptimalTarget(ns: NS) {
   const hackLevel = ns.getHackingLevel();
   function getScore(server: Server) {
     const difficultyScale =
-      (100 - server.minDifficulty) / (100 - server.hackDifficulty);
+      (100 - server.minDifficulty!) / (100 - server.hackDifficulty!);
     const hackChanceAdjusted = Math.min(
       1,
-      ns.hackAnalyzeChance(server.hostname) * difficultyScale
+      ns.hackAnalyzeChance(server.hostname) * difficultyScale,
     );
     const hackPercentAdjusted = Math.min(
       1,
-      ns.hackAnalyze(server.hostname) * difficultyScale
+      ns.hackAnalyze(server.hostname) * difficultyScale,
     );
     const timePenalty =
-      (200 + server.requiredHackingSkill * server.minDifficulty) /
+      (200 + server.requiredHackingSkill! * server.minDifficulty!) /
       (50 + hackLevel);
     const baseScore =
-      (server.moneyMax * hackChanceAdjusted * hackPercentAdjusted) /
+      (server.moneyMax! * hackChanceAdjusted * hackPercentAdjusted) /
       timePenalty;
 
     if (
       server.hackDifficulty == server.minDifficulty &&
-      server.moneyAvailable >= 0.9 * server.moneyMax
+      server.moneyAvailable! >= 0.9 * server.moneyMax!
     ) {
       return baseScore * 1.2;
     }
@@ -65,7 +62,7 @@ function getOptimalTarget(ns: NS) {
       const score = getScore(server);
       return score > bscore ? { server, score } : acc;
     },
-    { server: servers[0], score: getScore(servers[0]) }
+    { server: servers[0], score: getScore(servers[0]) },
   );
   return bestServer.server.hostname;
 }
@@ -75,7 +72,7 @@ function launchHack(
   target: string,
   threads: number,
   ramNet: RamNet,
-  dryRun: boolean
+  dryRun: boolean,
 ) {
   const SCRIPT =
     threads == 0.5
@@ -97,7 +94,7 @@ function launchHack(
     block.name,
     threads,
     target,
-    ns.getWeakenTime(target) - ns.getHackTime(target)
+    ns.getWeakenTime(target) - ns.getHackTime(target),
   );
 }
 
@@ -106,7 +103,7 @@ function launchGrow(
   target: string,
   threads: number,
   ramNet: RamNet,
-  dryRun: boolean
+  dryRun: boolean,
 ) {
   const SCRIPT = "/batcher/shotgun_grow.js";
   const block = ramNet.blocks.find((b) => b.ram >= threads * 1.75);
@@ -122,7 +119,7 @@ function launchGrow(
     block.name,
     threads,
     target,
-    ns.getWeakenTime(target) - ns.getGrowTime(target)
+    ns.getWeakenTime(target) - ns.getGrowTime(target),
   );
 }
 
@@ -134,7 +131,7 @@ function launchWeaken(
   target: string,
   threads: number,
   ramNet: RamNet,
-  dryRun: boolean
+  dryRun: boolean,
 ) {
   while (threads > 0) {
     const block = ramNet.blocks.find((b) => b.ram >= 1.75);
@@ -148,7 +145,7 @@ function launchWeaken(
           "/batcher/shotgun_weaken.js",
           block.name,
           actualThreads,
-          target
+          target,
         )
       ) {
         ns.print(`WARN: Failed to spread launch weaken on ${block.name}`);
@@ -166,7 +163,7 @@ function launchShare(
   ramNet: RamNet,
   iters: number,
   threads: number,
-  dryRun: boolean
+  dryRun: boolean,
 ) {
   let threadsLaunched = 0;
   while (threads > 0) {
@@ -195,7 +192,7 @@ function planHWGW(ns: NS, target: string) {
   const availableThreads = ramNet.blocks.reduce(
     // underestimates slightly
     (acc, block) => acc + Math.floor(block.ram / 1.75),
-    0
+    0,
   );
   let best = [0, 0, 0, 0];
   let bestHackTaken = 0;
@@ -206,20 +203,20 @@ function planHWGW(ns: NS, target: string) {
     hackThreads++
   ) {
     const weaken1Threads = Math.ceil(
-      ns.hackAnalyzeSecurity(hackThreads) / ns.weakenAnalyze(1)
+      ns.hackAnalyzeSecurity(hackThreads) / ns.weakenAnalyze(1),
     );
     let growThreads = Math.ceil(
       ns.growthAnalyze(
         target,
-        1 / (1 - GROW_COMPENSATION * hackPercent * hackThreads)
-      )
+        1 / (1 - GROW_COMPENSATION * hackPercent * hackThreads),
+      ),
     );
     let weaken2Threads = Math.ceil(
-      ns.growthAnalyzeSecurity(growThreads) / ns.weakenAnalyze(1)
+      ns.growthAnalyzeSecurity(growThreads) / ns.weakenAnalyze(1),
     );
     const memoryConstrainedBatchCount = Math.floor(
       availableThreads /
-        (hackThreads + growThreads + weaken1Threads + weaken2Threads)
+        (hackThreads + growThreads + weaken1Threads + weaken2Threads),
     );
     let batch_count = Math.min(MAX_BATCHES, memoryConstrainedBatchCount);
     if (batch_count < 2) {
@@ -229,7 +226,7 @@ function planHWGW(ns: NS, target: string) {
       // we have a lot of ram, so we can increase the grow amount to be safer
       growThreads = Math.min(Math.floor(growThreads * 1.05), growThreads + 7);
       weaken2Threads = Math.ceil(
-        ns.growthAnalyzeSecurity(growThreads) / ns.weakenAnalyze(1)
+        ns.growthAnalyzeSecurity(growThreads) / ns.weakenAnalyze(1),
       );
     }
     if (batch_count < 10000) {
@@ -271,7 +268,7 @@ function planHWGW(ns: NS, target: string) {
         Math.ceil(
           (ns.hackAnalyzeSecurity(0.5) +
             ns.growthAnalyzeSecurity(growThreads)) /
-            ns.weakenAnalyze(1)
+            ns.weakenAnalyze(1),
         ),
       ];
     } else {
@@ -288,7 +285,7 @@ function planHWGW(ns: NS, target: string) {
 function getOtherInstances(ns: NS): ProcessInfo[] {
   const instances = ns.ps();
   return instances.filter(
-    (x) => CONFLICT_SCRIPTS.includes(x.filename) && x.pid !== ns.pid
+    (x) => CONFLICT_SCRIPTS.includes(x.filename) && x.pid !== ns.pid,
   );
 }
 
@@ -297,7 +294,7 @@ export async function main(ns: NS) {
   if (otherInstances.length > 0) {
     if (otherInstances.length > 1) {
       ns.tprint(
-        `ERROR: WTF! Multiple conflicting processes are already running. Exiting.`
+        `ERROR: WTF! Multiple conflicting processes are already running. Exiting.`,
       );
       return;
     }
@@ -326,7 +323,7 @@ export async function main(ns: NS) {
   const dataPort = ns.getPortHandle(ns.pid);
   dataPort.clear();
   while (true) {
-    const pid = ns.run("/tasks/root_all.ts");
+    const pid = ns.run("/tasks/root_all.js");
     if (!pid) {
       ns.print("Failed to launch root_all");
       return;
@@ -339,22 +336,22 @@ export async function main(ns: NS) {
     let server = ns.getServer(target);
 
     if (
-      server.hackDifficulty > server.minDifficulty ||
-      server.moneyAvailable < server.moneyMax
+      server.hackDifficulty! > server.minDifficulty! ||
+      server.moneyAvailable! < server.moneyMax!
     ) {
       ns.print(`Prepping ${target}`);
       const completionTime = await prepServer(ns, target);
       server = ns.getServer(target);
       if (
         completionTime > 0 &&
-        (server.moneyAvailable < server.moneyMax * 0.7 ||
-          server.hackDifficulty > server.minDifficulty + 0.001)
+        (server.moneyAvailable! < server.moneyMax! * 0.7 ||
+          server.hackDifficulty! > server.minDifficulty! + 0.001)
       ) {
         // If the server is ridiculously bad, wait until prep is done
         ns.print(
           `WARN: Batcher sleeping for ${ns.tFormat(
-            completionTime
-          )} for prep to finish. Server is in a bad state.`
+            completionTime,
+          )} for prep to finish. Server is in a bad state.`,
         );
         await ns.sleep(completionTime + SLEEP_SLACK_TIME);
         if (completionTime + SLEEP_SLACK_TIME > 10000) {
@@ -366,10 +363,10 @@ export async function main(ns: NS) {
     ns.print(`Batching ${target}`);
     let [hackThreads, weaken1Threads, growThreads, weaken2Threads] = planHWGW(
       ns,
-      target
+      target,
     );
     ns.print(
-      `HWGW: ${hackThreads} / ${weaken1Threads} / ${growThreads} / ${weaken2Threads}`
+      `HWGW: ${hackThreads} / ${weaken1Threads} / ${growThreads} / ${weaken2Threads}`,
     );
 
     const ramNet = new RamNet(ns);
@@ -390,8 +387,8 @@ export async function main(ns: NS) {
     ns.print(`Launched ${batches_launched} batches on ${target}`);
     ns.print(
       `Sleeping for ${ns.tFormat(
-        ns.getWeakenTime(target) + SLEEP_SLACK_TIME
-      )} for batch to finish`
+        ns.getWeakenTime(target) + SLEEP_SLACK_TIME,
+      )} for batch to finish`,
     );
 
     // Share if we can. This works less well when batches are short... But I can't be bothered to fix it.
@@ -399,18 +396,27 @@ export async function main(ns: NS) {
       const shareIter = Math.floor(ns.getWeakenTime(target) / SHARE_DURATION);
       if (shareIter < 1) {
         ns.print(
-          "WARN: Weaken Duration for target is very short. Skipping share in case scheduling changes."
+          "WARN: Weaken Duration for target is very short. Skipping share in case scheduling changes.",
         );
       } else {
         const shareThreads = Math.floor(
-          (ramNet.maxRam * SHARE_AMOUNT - ramNet.usedRam) / 4
+          (ramNet.maxRam * SHARE_AMOUNT - ramNet.usedRam) / 4,
         );
-        ns.print(`Launching ${shareThreads} share for ${shareIter} iterations`);
-        launchShare(ns, ramNet, shareIter, shareThreads, false);
+        if (shareThreads < 1) {
+          ns.print(
+            "INFO: Not enough RAM to launch share. Skipping share this batch.",
+          );
+        } else {
+          ns.print(
+            `Launching ${shareThreads} share for ${shareIter} iterations`,
+          );
+          launchShare(ns, ramNet, shareIter, shareThreads, false);
+        }
       }
     }
     await 0;
     await 0;
     await ns.sleep(ns.getWeakenTime(target) + SLEEP_SLACK_TIME);
+    pserv_upgrade_oneshot(ns);
   }
 }

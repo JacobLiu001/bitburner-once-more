@@ -1,0 +1,3 @@
+https://github.com/alainbryden/bitburner-scripts
+
+I'm just using scan.js and stats.js
